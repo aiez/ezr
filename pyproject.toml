@@ -1,0 +1,24 @@
+# single-file module; build/publish with `python3 -m build` (optional).
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ezr"
+version = "0.5.0"
+description = "lightweight XAI for multi-objective optimization"
+readme = ",ezr.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [{name = "Tim Menzies", email = "timm@ieee.org"}]
+keywords = ["xai", "optimization", "explainable", "machine-learning"]
+dependencies = []                       # stdlib only, by design
+
+[project.scripts]
+ezr = "ezr:ezrmain"
+
+[project.urls]
+Homepage = "http://tiny.cc/ezr"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["ezr.py"]
