@@ -1,67 +1,95 @@
-<!-- Copyright (c) 2025 Tim Menzies, MIT License https://opensource.org/licenses/MIT -->
-<a href="https://timm.fyi"><img align="right" alt="Author" src="https://img.shields.io/badge/Author-timm-dc143c?logo=readme&logoColor=white"></a><img align="right" alt="Language" src="https://img.shields.io/badge/Language-Python-000080?logo=python&logoColor=white"><a href="https://choosealicense.com/licenses/mit/"><img align="right" alt="License" src="https://img.shields.io/badge/License-MIT-32cd32?logo=open-source-initiative&logoColor=white"></a><img align="right" alt="Purpose" src="https://img.shields.io/badge/Purpose-XAI·Optimization-7b68ee?logo=githubcopilot&logoColor=white">
+<!-- Copyright (c) 2026 Tim Menzies, MIT License https://opensource.org/licenses/MIT -->
+<a href="https://timm.fyi"><img align="right" alt="Author" src="https://img.shields.io/badge/Author-timm-dc143c?logo=readme&logoColor=white"></a><img align="right" alt="Language" src="https://img.shields.io/badge/Language-Python%203.12+-000080?logo=python&logoColor=white"><img align="right" alt="Deps" src="https://img.shields.io/badge/Deps-0-32cd32?logo=checkmarx&logoColor=white"><a href="https://choosealicense.com/licenses/mit/"><img align="right" alt="License" src="https://img.shields.io/badge/License-MIT-32cd32?logo=open-source-initiative&logoColor=white"></a><img align="right" alt="Purpose" src="https://img.shields.io/badge/Purpose-XAI·Optimization-7b68ee?logo=githubcopilot&logoColor=white">
 
 ### [http://tiny.cc/ezr](http://tiny.cc/ezr)
-ezr.py (v0.5): lightweight XAI for multi-objective optimization. One
-self-contained file, Python stdlib only, zero dependencies. Learns a
-small explainable tree that finds the best rows in a CSV while
-labelling as few examples as it can.
+ezr — explainable multi-objective optimization. Two files, ~1100 lines,
+**zero dependencies**, pure Python stdlib. An experiment in "how low can
+you go?": active learning labels a few dozen informative rows, builds a
+regression tree, and sorts the rest. Repeated studies show that labelling
+just the first ~5 examples optimizes as well or better than SMAC — at two
+orders of magnitude less cost.
 
 ```bash
-# install + run on sample data from the optimiz gist
-git clone http://tiny.cc/optimiz        # CSV test data (sibling dir)
+# sibling data gists supply the CSVs (no data lives in here)
+git clone http://tiny.cc/optimiz       # optimization data
+git clone http://tiny.cc/klassif       # classification data
 git clone http://tiny.cc/ezr && cd ezr
-python3 ezr.py                          # tree over ../optimiz/auto93.csv
-python3 ezr.py -f ../optimiz/SS-A.csv   # any other CSV
+python3 cli.py --list                  # all commands
+python3 cli.py tree ../optimiz/auto93.csv
+python3 cli.py test_all                # run every self-test
 ```
 
-**Sections:** [NAME](#name) | [SYNOPSIS](#synopsis) | [OPTIONS](#options) | [DATA](#data) | [OUTPUT](#output) | [LICENSE](#license) | [AUTHOR](#author)
+**Sections:** [NAME](#name) | [SYNOPSIS](#synopsis) | [DESCRIPTION](#description) | [DATA](#data) | [COMMANDS](#commands) | [OPTIONS](#options) | [LAYOUT](#layout) | [LICENSE](#license) | [AUTHOR](#author)
+
+**Files:** [ezr.py](#file-ezr-py) | [cli.py](#file-cli-py) | [Makefile](#file-makefile) | [pyproject.toml](#file-pyproject-toml) | [LICENSE.md](#file-license-md)
 
 ## NAME
 
-    ezr - explainable multi-objective optimization, in one file
+    ezr - explainable multi-objective optimization via decision
+          trees, clustering, naive bayes, and active learning
 
 ## SYNOPSIS
 
-    python3 ezr.py [options]
-    p                        # konfig bashrc alias: python3 -B ezr.py
+    python3 cli.py [--key=val ...] CMD [args]
+    python3 cli.py --list | --help
+    p                          # konfig bashrc alias: python3 -B cli.py
 
-    Sibling layout (gists share one parent dir):
-      ezr/      this repo
-      optimiz/  CSV data (default file = ../optimiz/auto93.csv)
+    Sibling gists (one parent dir; no naked paths):
+      ezr/      this repo (ezr.py library + cli.py dispatch)
+      optimiz/  optimization CSVs   (tiny.cc/optimiz)
+      klassif/  classification CSVs (tiny.cc/klassif)
+      textz/    text-mining CSVs    (tiny.cc/textz)
       konfig/   shared Makefile + dotfiles (make help|sh|vi|...)
 
-## OPTIONS
+## DESCRIPTION
 
-    -a acq=near         label with (near|xploit|xplor|bore|adapt)
-    -A Any=4            initial random guesses before learning
-    -B Budget=30        labels spent growing the theory
-    -C Check=5          budget for checking the learned model
-    -D Delta=smed       effect-size test for Cliff's delta
-    -F Few=128          sample size for random sampling
-    -K Ks=0.95          confidence for Kolmogorov-Smirnov test
-    -l leaf=3           min items in a tree leaf
-    -m m=1              Bayes low-frequency parameter
-    -p p=2              distance coefficient (1,2 = Manhattan,Euclid)
-    -s seed=1234567891  random number seed
-    -f file=...         data file (default ../optimiz/auto93.csv)
-    -h                  show help
+    Summarizes CSV into Num/Sym columns; grows decision trees that
+    minimize distance to the ideal outcome; clusters via k-means or
+    recursive halving; classifies + actively learns with naive bayes
+    or centroid acquisition. Input is CSV; the header defines roles
+    (see DATA). Stdlib only, Python 3.12+.
 
 ## DATA
 
-    CSV with a self-describing header (see optimiz):
-      Upper first char -> numeric column
-      lower first char -> symbolic column
-      suffix +         -> numeric goal, maximize
-      suffix -         -> numeric goal, minimize
-      suffix X         -> ignore
-      missing value    -> '?'
+    Header column names declare each role:
+      [A-Z]*    numeric        (e.g. "Age")
+      [a-z]*    symbolic       (e.g. "job")
+      [A-Z]*+   maximize goal  (e.g. "Mpg+")
+      [A-Z]*-   minimize goal  (e.g. "Lbs-")
+      [a-z]*!   class label    (e.g. "sick!")
+      *X        ignored        (e.g. "idX")
+      ?         missing value  (in rows, not the header)
 
-## OUTPUT
+## COMMANDS
 
-    Prints an explainable tree: each branch is a rule, indented by
-    depth; `win` scores how good the rows under that rule are (higher
-    = closer to all goals). The footer lists the columns actually used.
+    each `eg_<app>` in cli.py is a command; `eg_test_<app>` is a test.
+      tree      grow + show a regression tree
+      cluster   k-means++ / recursive halving
+      classify  incremental naive bayes (confusion matrix)
+      search    sa | ls | de optimizers (energy trace)
+      acquire   active learning; top rows by distance-to-heaven
+      textmine  CNB text mining (needs ../textz)
+      stats     same / bestRanks / confused demo
+      test_all  run every self-test (no pytest needed)
+
+## OPTIONS
+
+    --seed=1            random seed
+    --p=2               distance (1,2 = Manhattan, Euclid)
+    --few=128           max rows kept while sampling
+    --learn.leaf=3      examples per tree leaf
+    --learn.start=4     initial labels
+    --learn.budget=50   rows allowed to be labelled
+    --learn.check=5     guesses to check
+    --bayes.m=2         m-estimate    --bayes.k=1   laplace
+    (full list: head of ezr.py; override any as --key=val)
+
+## LAYOUT
+
+    ezr.py   library; section banners per app (Types, Col, Data,
+             Distance, Bayes, Tree, Cluster, Classify, Search,
+             Acquire, Textmine, Stats, Format)
+    cli.py   dispatch; eg_<app> demos + eg_test_<app> tests
 
 ## LICENSE
 

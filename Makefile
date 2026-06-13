@@ -2,11 +2,11 @@
 # knobs only; shared targets live in $(KONFIG)/Makefile
 KONFIG ?= ../konfig
 APP    := ezr
-MAIN   := ezr.py
+MAIN   := cli.py
 EXT    := py
 LANG   := python
 SRC    := *.py
-LINT   := ruff check ezr.py
+LINT   := ruff check ezr.py cli.py
 TOOLS  := python3:run ruff:lint
 PKG    := python3 gawk ruff neovim tmux
 
