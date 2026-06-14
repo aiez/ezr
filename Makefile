@@ -24,7 +24,8 @@ slow:    ## slow tests only (textmine)
 	@python3 -B cli.py --slow
 testall: ## every test (fast + slow)
 	@python3 -B cli.py --all
-win: ## mean hold-out win: acquire20 across every $(DATA)/*.csv, parallel
+win: ## hold-out win across every $(DATA)/*.csv (parallel): sorted list + mean
 	@ls $(DATA)/*.csv | sort -R | \
-	 xargs -P $(JOBS) -I{} sh -c 'python3 -B cli.py --acquire20 "{}" 2>/dev/null | awk "/:win/{print \$$2}"' | \
-	 awk '{n++;s+=$$1} END{if(n) printf "mean hold-out win = %.1f over %d datasets\n", s/n, n}'
+	 xargs -P $(JOBS) -I{} sh -c 'python3 -B cli.py --acquire20 "{}" 2>/dev/null' \
+	 | gawk '{print $$1}' | sort -n | tee /tmp/ezr_win.txt | fmt
+	@gawk '{n++;s+=$$1} END{if(n) printf "\nmean=%.1f n=%d\n", s/n, n}' /tmp/ezr_win.txt

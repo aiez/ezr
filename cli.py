@@ -128,13 +128,13 @@ def test_acquire(*argv):
   print("ok test_acquire")
 
 def test_acquire20(*argv):
-  """Hold-out win: acquire+tree on one half, tree sorts the other, top-check, 20 reps."""
+  """Hold-out win: acquire+tree on one half, tree sorts the other, top-check.
+  Prints ONE line `<win> <file>` (win is $1, for `gawk '{print $1}'|sort -n`)."""
   f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   w = holdoutWin(Data(csv(f)))
-  print(f":win {w:.0f}")
+  print(f"{w:.0f}\t{Path(f).name}")
   assert w > 50, f"hold-out win too low: {w}"
-  print("ok test_acquire20")
 
 def test_classify(*argv):
   """Naive Bayes beats ZeroR (90/10 split, 20 reps)."""
