@@ -658,6 +658,23 @@ def acquire(data, score=acquireWithCentroid,
   lab.rows.sort(key=lambda r: disty(lab, r))
   return lab
 
+def holdoutWin(data, repeats=20):
+  """Active-learning quality. Each rep: split rows in half; acquire labels
+  on one half; grow a tree from those labels; use the tree to sort the
+  held-out half; check the top `learn.check`; keep the best one's win.
+  Data is loaded once; return the mean win over `repeats` shuffles."""
+  win, out = wins(data), Num()
+  for _ in range(repeats):
+    rows = data.rows[:]; shuffle(rows)
+    half = len(rows) // 2
+    train, holdout = rows[:half], rows[half:]
+    lab  = acquire(clone(data, train))                          # acquire on one half
+    tree = treeGrow(lab, lab.rows)                              # tree from the labels
+    ranked = sorted(holdout, key=lambda r: treeLeaf(tree, r).ynum.mu)  # tree sorts other half
+    best = min(ranked[:the.learn.check], key=lambda r: disty(data, r)) # first `check` -> best
+    add(out, win(best))
+  return mid(out)
+
 #  ___                  ._ _
 #   |   _    _|_  ._ _  | | |  o ._    _
 #   |  (/_   |_  >< |_  | | |  | | |  (/_

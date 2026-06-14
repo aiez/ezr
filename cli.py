@@ -93,6 +93,13 @@ def eg_acquire(*argv):
   for r in best:
     print(f"  :win {win(r):>4}  :d2h {disty(lab, r):.3f}  {r}")
 
+def eg_acquire20(*argv):
+  """Hold-out win: acquire+tree on one half, sort the other, top-check, 20 reps.
+  No arg -> default optimize data; FILE arg -> that CSV. Prints `:win <mean>`."""
+  f = need(argv[0]) if argv else need(EGOPT1)
+  if not f: return
+  print(f":win {holdoutWin(Data(csv(f))):.0f}")
+
 def eg_textmine(*argv):
   """CNB text mining on FILE."""
   if not argv: print("usage: ezr textmine FILE"); return
@@ -192,6 +199,14 @@ def eg_test_acquire(*_):
   assert mid(w1) > mid(w_rand), f"acquire {mid(w1):.1f} <= rand {mid(w_rand):.1f}"
   print("ok eg_test_acquire")
 
+def eg_test_acquire20(*_):
+  """Hold-out tree eval (acquire on half, tree sorts the other) scores well."""
+  f = need(EGOPT1)
+  if not f: return
+  w = holdoutWin(Data(csv(f)))
+  assert w > 50, f"hold-out win too low: {w}"
+  print(f"ok eg_test_acquire20 (win={int(w)})")
+
 def eg_test_classify(*_):
   """NB and Tree beat ZeroR (90/10 split, reps)."""
   f = need(EGCLASS2)
@@ -247,17 +262,25 @@ def eg_test_textmine(*_):
     p = tmPrepare(f); assert len(p.top) >= 20
   print("ok eg_test_textmine")
 
-def eg_test_all(*_):
-  """Run every eg_test_* function."""
+SLOW = {"textmine"}   # eg_test_* names too slow for the --fast lane
+
+def runTests(which="all"):
+  """Run eg_test_* funcs. which = all | fast (skip SLOW) | slow (only SLOW)."""
   fails = 0
   for name in sorted(globals()):
-    if name.startswith("eg_test_") and name != "eg_test_all":
-      print(f"--- {name} ---")
-      try: globals()[name]()
-      except Exception as e:
-        fails += 1; traceback.print_exc()
+    if not name.startswith("eg_test_") or name == "eg_test_all": continue
+    base = name[len("eg_test_"):]
+    if which == "fast" and base in SLOW: continue
+    if which == "slow" and base not in SLOW: continue
+    print(f"--- {name} ---")
+    try: globals()[name]()
+    except Exception: fails += 1; traceback.print_exc()
   print(f"\nDone. fails={fails}")
   if fails: sys.exit(1)
+
+def eg_test_all(*_):
+  """Run every eg_test_* function."""
+  runTests("all")
 
 # ============================================================
 # Dispatcher
@@ -274,6 +297,9 @@ def parse_flags(argv):
       print(__doc__); list_cmds(); sys.exit(0)
     elif a == "--list":
       list_cmds(); sys.exit(0)
+    elif a == "--all":  runTests("all");  sys.exit(0)
+    elif a == "--fast": runTests("fast"); sys.exit(0)
+    elif a == "--slow": runTests("slow"); sys.exit(0)
     else:
       rest.append(a)
   return rest
