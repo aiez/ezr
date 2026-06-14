@@ -1,29 +1,34 @@
 #!/usr/bin/env python3 -B
-"""cli.py: ezr command-line + eg_* demos and tests.
+"""cli.py: ezr command-line. One test_<name> per concept; each both
+demonstrates (prints) and checks (asserts).
 
 Usage:
-  ezr [--key=val ...] CMD [args]
-  ezr --list           list all eg_* commands
-  ezr --help           show this help
+  ezr [--key=val ...] --<name> [FILE]
+  ezr --list            list all commands
+  ezr --fast            run quick tests (skip slow)
+  ezr --slow            run slow tests only
+  ezr --all             run every test
+  ezr --help            show this help
 
-CMD is the name after `eg_`. Examples:
-  ezr classify ../klassif/diabetes.csv
-  ezr tree     ../optimiz/auto93.csv
-  ezr search de ../optimiz/auto93.csv
-  ezr --learn.budget=256 acquire ../optimiz/auto93.csv
-  ezr test_core
-  ezr test_acquire
+A command is the name after `test_`. With no FILE it uses a default
+dataset; with a FILE arg it uses that CSV. Examples:
+  ezr --tree ../optimiz/auto93.csv
+  ezr --classify ../klassif/diabetes.csv
+  ezr --learn.budget=256 --acquire20 ../optimiz/auto93.csv
+  ezr --core
 """
 import sys, random, traceback
 from pathlib import Path
 from ezr import *
 
-# ---- Default data files (override via args) ----
+# ---- Default data files (sibling data gists; override via FILE arg) ----
 EGOPT1   = Path("../optimiz/auto93.csv")
 EGCLASS1 = Path("../klassif/soybean.csv")
 EGCLASS2 = Path("../klassif/diabetes.csv")
 EGCNB    = Path("../textz/Hall.csv")
 EGTXT    = Path("../textz/Hall_raw.csv")
+
+SLOW = {"textmine"}   # commands too slow for the --fast lane
 
 def ready(file):
   """Shuffle, split data into (full, train, test_rows)."""
@@ -33,92 +38,17 @@ def ready(file):
   return (d, clone(d, d.rows[:half][:the.few]), d.rows[half:])
 
 def need(f):
-  """Return path string if exists, else None."""
+  """Return path string if it exists, else None."""
   p = Path(f)
   if not p.exists():
     print(f"missing: {f}"); return None
   return str(p)
 
 # ============================================================
-# App demos (one per app)
+# Commands: test_<name>(*argv) -- demo + assert, default-or-FILE
 # ============================================================
 
-def eg_classify(*argv):
-  """Incremental NB on FILE; print confusion matrix raw counts."""
-  if not argv: print("usage: ezr classify FILE"); return
-  cf = classify(csv(argv[0])) or {}
-  for want in sorted(cf):
-    for got in sorted(cf[want]):
-      print(f"  :want {want:<24} :got {got:<24} :n {cf[want][got]}")
-
-def eg_tree(*argv):
-  """Grow regression tree on FILE, show structure."""
-  if not argv: print("usage: ezr tree FILE"); return
-  d = Data(csv(argv[0]))
-  treeShow(treeGrow(d, d.rows))
-
-def eg_cluster(*argv):
-  """kmeans++ + kmeans on FILE, one row per cluster."""
-  if not argv: print("usage: ezr cluster FILE [--k=10]"); return
-  d = Data(csv(argv[0]))
-  cents = kpp(d, k=10)
-  ds = kmeans(d, k=10, cents=cents)
-  for c in ds:
-    print(f"  :n {len(c.rows):>4}  :centroid {o(mids(c))}")
-
-def eg_search(*argv):
-  """ezr search {sa|ls|de} FILE — run search, report energy trace."""
-  if len(argv) < 2: print("usage: ezr search {sa|ls|de} FILE"); return
-  algo, file = argv[0], argv[1]
-  d0 = Data(csv(file))
-  shuffle(d0.rows)
-  known = clone(d0, d0.rows[:50])
-  srch  = clone(d0, d0.rows[50:])
-  oracle = lambda r: oracleNearest(known, r)
-  fns = {"sa": lambda: sa(srch, oracle, restarts=100),
-         "ls": lambda: ls(srch, oracle),
-         "de": lambda: de(srch, oracle)}
-  if algo not in fns: print(f"unknown: {algo}"); return
-  print(f"{'evals':>6} {'energy':>7}")
-  for h, e, _ in fns[algo](): print(f"  {h:4}   {o(e):>5}")
-
-def eg_acquire(*argv):
-  """Active learning on FILE; print top-check labeled rows by d2h."""
-  if not argv: print("usage: ezr acquire FILE [--learn.budget=50]"); return
-  d0 = Data(csv(argv[0]))
-  win = wins(d0)
-  lab = acquire(d0)
-  best = sorted(lab.rows, key=lambda r: disty(lab, r))[:the.learn.check]
-  print(f":budget {the.learn.budget} :check {the.learn.check}")
-  for r in best:
-    print(f"  :win {win(r):>4}  :d2h {disty(lab, r):.3f}  {r}")
-
-def eg_acquire20(*argv):
-  """Hold-out win: acquire+tree on one half, sort the other, top-check, 20 reps.
-  No arg -> default optimize data; FILE arg -> that CSV. Prints `:win <mean>`."""
-  f = need(argv[0]) if argv else need(EGOPT1)
-  if not f: return
-  print(f":win {holdoutWin(Data(csv(f))):.0f}")
-
-def eg_textmine(*argv):
-  """CNB text mining on FILE."""
-  if not argv: print("usage: ezr textmine FILE"); return
-  f = need(argv[0])
-  if f: tmActive(f)
-
-def eg_stats(*argv):
-  """Tiny demo of same/bestRanks/confused."""
-  print(":same    ", same([1,2,3,4,5], [1.1,2,3,4,5], eps=0.5))
-  print(":bestRanks", {k: v.n for k, v in bestRanks(
-    {"good":[1,2,3], "bad":[100,200,300]}).items()})
-  out = confused({"a":{"a":80,"b":20}, "b":{"a":10,"b":90}})
-  for s in out: print(f"  :{s.label.strip()} acc={s.acc}")
-
-# ============================================================
-# Tests (assertions over real data files)
-# ============================================================
-
-def eg_test_core(*_):
+def test_core(*argv):
   """Core primitives: Num, Sym, Data, distance, format."""
   assert o(3.14159).startswith("3.14")
   assert thing("3.14") == 3.14
@@ -129,17 +59,17 @@ def eg_test_core(*_):
   assert mid(c) == "a" and 1.4 < spread(c) < 1.5
   cols = Cols(["name", "Age", "Weight-"])
   assert not cols.ys[0].heaven and len(cols.xs) == 2 and len(cols.ys) == 1
-  f = need(EGOPT1)
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   d = Data(csv(f)); assert len(d.rows) > 0
   assert distx(d, d.rows[0], d.rows[0]) == 0
   ds = [disty(d, r) for r in d.rows]
   assert min(ds) >= 0 and max(ds) <= 1.0001
-  print("ok eg_test_core")
+  print("ok test_core")
 
-def eg_test_tree(*_):
-  """Tree: grow, leaf, plan."""
-  f = need(EGOPT1)
+def test_tree(*argv):
+  """Grow + show a regression tree; check leaves + counterfactual plans."""
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   _, d_train, _ = ready(f)
   t = treeGrow(d_train, d_train.rows)
@@ -150,27 +80,25 @@ def eg_test_tree(*_):
   here = treeLeaf(t, max(d.rows, key=lambda r: disty(d, r)))
   plans = sorted(treePlan(t, here))
   assert plans, "treePlan produced no counterfactuals"
-  print("ok eg_test_tree")
+  print("ok test_tree")
 
-def eg_test_cluster(*_):
-  """kmeans, kpp, rhalf benchmarks."""
-  f = need(EGOPT1)
+def test_cluster(*argv):
+  """kmeans++ / kmeans / rhalf; show clusters, check sizes."""
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   d = Data(csv(f))
-  cents = kpp(d, k=10)
-  assert len(cents) == 10
-  ds = kmeans(d, k=10, cents=cents)
-  assert len(ds) >= 1
-  ds2 = rhalf(d, k=10)
-  assert len(ds2) >= 1
-  print("ok eg_test_cluster")
+  cents = kpp(d, k=10); assert len(cents) == 10
+  ds = kmeans(d, k=10, cents=cents); assert len(ds) >= 1
+  for c in ds:
+    print(f"  :n {len(c.rows):>4}  :centroid {o(mids(c))}")
+  assert len(rhalf(d, k=10)) >= 1
+  print("ok test_cluster")
 
-def eg_test_search(*_):
-  """sa, ls, de — energy decreases over budget."""
-  f = need(EGOPT1)
+def test_search(*argv):
+  """sa / ls / de optimizers; show energy trace, check it decreases."""
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
-  d0 = Data(csv(f))
-  shuffle(d0.rows)
+  d0 = Data(csv(f)); shuffle(d0.rows)
   known = clone(d0, d0.rows[:50])
   srch  = clone(d0, d0.rows[50:])
   oracle = lambda r: oracleNearest(known, r)
@@ -180,11 +108,11 @@ def eg_test_search(*_):
     es = [e for _, e, _ in fn()]
     assert es and es[-1] <= es[0], f"{name} regressed: e0={es[0]} eN={es[-1]}"
     print(f"  {name}: {len(es)} improvements, e0={o(es[0])} eN={o(es[-1])}")
-  print("ok eg_test_search")
+  print("ok test_search")
 
-def eg_test_acquire(*_):
-  """Active learning beats random baseline."""
-  f = need(EGOPT1)
+def test_acquire(*argv):
+  """Active learning beats a random baseline over 20 reps."""
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   d0 = Data(csv(f))
   w1, w_rand = Num(), Num()
@@ -197,24 +125,25 @@ def eg_test_acquire(*_):
                         key=lambda r: disty(d_train, r))))
   print(f":acquire {int(mid(w1))} :rand {int(mid(w_rand))}")
   assert mid(w1) > mid(w_rand), f"acquire {mid(w1):.1f} <= rand {mid(w_rand):.1f}"
-  print("ok eg_test_acquire")
+  print("ok test_acquire")
 
-def eg_test_acquire20(*_):
-  """Hold-out tree eval (acquire on half, tree sorts the other) scores well."""
-  f = need(EGOPT1)
+def test_acquire20(*argv):
+  """Hold-out win: acquire+tree on one half, tree sorts the other, top-check, 20 reps."""
+  f = need(argv[0]) if argv else need(EGOPT1)
   if not f: return
   w = holdoutWin(Data(csv(f)))
+  print(f":win {w:.0f}")
   assert w > 50, f"hold-out win too low: {w}"
-  print(f"ok eg_test_acquire20 (win={int(w)})")
+  print("ok test_acquire20")
 
-def eg_test_classify(*_):
-  """NB and Tree beat ZeroR (90/10 split, reps)."""
-  f = need(EGCLASS2)
+def test_classify(*argv):
+  """Naive Bayes beats ZeroR (90/10 split, 20 reps)."""
+  f = need(argv[0]) if argv else need(EGCLASS2)
   if not f: return
   d = Data(csv(f)); k = d.cols.klass.at
   rows = list(csv(f)); header, body = rows[0], rows[1:]
   def zeroR(train, test):
-    cs = {}; [cs.setdefault(r[k], 0) for r in train]
+    cs = {}
     for r in train: cs[r[k]] = cs.get(r[k], 0) + 1
     maj = max(cs, key=cs.get)
     return sum(1 for r in test if r[k] == maj) / (len(test) or 1e-32)
@@ -238,38 +167,41 @@ def eg_test_classify(*_):
   nb, zr = sum(nb_a)/len(nb_a), sum(zr_a)/len(zr_a)
   print(f":NB {nb:.3f} :ZeroR {zr:.3f}")
   assert nb > zr, f"NB ({nb:.3f}) <= ZeroR ({zr:.3f})"
-  print("ok eg_test_classify")
+  print("ok test_classify")
 
-def eg_test_stats(*_):
-  """same, bestRanks, confused."""
+def test_stats(*argv):
+  """same / bestRanks / confused."""
   assert same([10,20,30,40,50], [11,19,31,39,51], eps=0.5)
   assert not same([1,2,3,4,5], [100,200,300,400,500], eps=0.5)
   best = bestRanks({"good":[1,2,3], "bad":[100,200,300]})
   assert "good" in best and "bad" not in best
   out = confused({"a":{"a":80,"b":20}, "b":{"a":10,"b":90}})
-  for s in out: assert 0 <= s.acc <= 100
-  print("ok eg_test_stats")
+  for s in out:
+    print(f"  :{s.label.strip()} acc={s.acc}")
+    assert 0 <= s.acc <= 100
+  print("ok test_stats")
 
-def eg_test_textmine(*_):
-  """CNB on processed text + tokenize on raw text."""
-  f = need(EGCNB)
+def test_textmine(*argv):
+  """CNB on processed text + tokenize/tf-idf on raw text. (slow)"""
+  f = need(argv[0]) if argv else need(EGCNB)
   if f:
-    data = Data(csv(f))
-    ws = cnb(data); assert len(ws) >= 2
+    data = Data(csv(f)); ws = cnb(data); assert len(ws) >= 2
     tmRandom(f)
-  f = need(EGTXT)
-  if f:
-    p = tmPrepare(f); assert len(p.top) >= 20
-  print("ok eg_test_textmine")
+  g = need(EGTXT)
+  if g:
+    p = tmPrepare(g); assert len(p.top) >= 20
+  print("ok test_textmine")
 
-SLOW = {"textmine"}   # eg_test_* names too slow for the --fast lane
+# ============================================================
+# Dispatcher: --<name> runs test_<name>; --key=val sets config
+# ============================================================
 
 def runTests(which="all"):
-  """Run eg_test_* funcs. which = all | fast (skip SLOW) | slow (only SLOW)."""
+  """Run test_* funcs. which = all | fast (skip SLOW) | slow (only SLOW)."""
   fails = 0
   for name in sorted(globals()):
-    if not name.startswith("eg_test_") or name == "eg_test_all": continue
-    base = name[len("eg_test_"):]
+    if not name.startswith("test_"): continue
+    base = name[len("test_"):]
     if which == "fast" and base in SLOW: continue
     if which == "slow" and base not in SLOW: continue
     print(f"--- {name} ---")
@@ -278,51 +210,31 @@ def runTests(which="all"):
   print(f"\nDone. fails={fails}")
   if fails: sys.exit(1)
 
-def eg_test_all(*_):
-  """Run every eg_test_* function."""
-  runTests("all")
-
-# ============================================================
-# Dispatcher
-# ============================================================
-
-def parse_flags(argv):
-  """Strip --key=val flags, set the.key=val, return remaining args."""
-  rest = []
-  for a in argv:
-    if a.startswith("--") and "=" in a:
-      k, v = a[2:].split("=", 1)
-      nest(the, k, thing(v))
-    elif a in ("-h", "--help"):
-      print(__doc__); list_cmds(); sys.exit(0)
-    elif a == "--list":
-      list_cmds(); sys.exit(0)
-    elif a == "--all":  runTests("all");  sys.exit(0)
-    elif a == "--fast": runTests("fast"); sys.exit(0)
-    elif a == "--slow": runTests("slow"); sys.exit(0)
-    else:
-      rest.append(a)
-  return rest
-
 def list_cmds():
-  """Print all eg_* commands."""
-  print("\nCommands (eg_* funcs):")
+  """Print all commands (test_* funcs)."""
+  print("\nCommands (run via --<name> [FILE]):")
   for name in sorted(globals()):
-    if name.startswith("eg_"):
+    if name.startswith("test_"):
       doc = (globals()[name].__doc__ or "").splitlines()[0]
-      print(f"  {name[3:]:<18} {doc}")
+      mark = " *slow" if name[len("test_"):] in SLOW else ""
+      print(f"  --{name[len('test_'):]:<12} {doc}{mark}")
 
 def main():
-  argv = sys.argv[1:]
-  if not argv:
+  cmd, rest = None, []
+  for a in sys.argv[1:]:
+    if a.startswith("--") and "=" in a:                  # config: --key=val
+      k, v = a[2:].split("=", 1); nest(the, k, thing(v))
+    elif a in ("-h", "--help"):  print(__doc__); list_cmds(); return
+    elif a == "--list":          list_cmds(); return
+    elif a in ("--all", "--fast", "--slow"):
+      random.seed(the.seed); runTests(a[2:]); return
+    elif a.startswith("--"):     cmd = a[2:]             # command: --name
+    else:                        rest.append(a)          # args for the command
+  if not cmd:
     print(__doc__); list_cmds(); return
-  argv = parse_flags(argv)
-  if not argv:
-    print(__doc__); list_cmds(); return
-  cmd, *rest = argv
-  fn = globals().get(f"eg_{cmd}")
+  fn = globals().get(f"test_{cmd}")
   if not fn:
-    print(f"unknown: {cmd}"); list_cmds(); sys.exit(1)
+    print(f"unknown: --{cmd}"); list_cmds(); sys.exit(1)
   random.seed(the.seed)
   fn(*rest)
 

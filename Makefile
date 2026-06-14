@@ -26,5 +26,5 @@ testall: ## every test (fast + slow)
 	@python3 -B cli.py --all
 win: ## mean hold-out win: acquire20 across every $(DATA)/*.csv, parallel
 	@ls $(DATA)/*.csv | sort -R | \
-	 xargs -P $(JOBS) -I{} sh -c 'python3 -B cli.py acquire20 "{}" 2>/dev/null | awk "/:win/{print \$$2}"' | \
+	 xargs -P $(JOBS) -I{} sh -c 'python3 -B cli.py --acquire20 "{}" 2>/dev/null | awk "/:win/{print \$$2}"' | \
 	 awk '{n++;s+=$$1} END{if(n) printf "mean hold-out win = %.1f over %d datasets\n", s/n, n}'

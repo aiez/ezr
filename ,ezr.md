@@ -15,8 +15,8 @@ git clone http://tiny.cc/optimiz       # optimization data
 git clone http://tiny.cc/klassif       # classification data
 git clone http://tiny.cc/ezr && cd ezr
 python3 cli.py --list                  # all commands
-python3 cli.py tree ../optimiz/auto93.csv
-python3 cli.py test_all                # run every self-test
+python3 cli.py --tree ../optimiz/auto93.csv
+python3 cli.py --all                   # run every self-test
 ```
 
 **Sections:** [NAME](#name) | [SYNOPSIS](#synopsis) | [DESCRIPTION](#description) | [DATA](#data) | [COMMANDS](#commands) | [OPTIONS](#options) | [LAYOUT](#layout) | [LICENSE](#license) | [AUTHOR](#author)
@@ -30,8 +30,8 @@ python3 cli.py test_all                # run every self-test
 
 ## SYNOPSIS
 
-    python3 cli.py [--key=val ...] CMD [args]
-    python3 cli.py --list | --help
+    python3 cli.py [--key=val ...] --<name> [FILE]
+    python3 cli.py --list | --fast | --slow | --all | --help
     p                          # konfig bashrc alias: python3 -B cli.py
 
     Sibling gists (one parent dir; no naked paths):
@@ -62,15 +62,18 @@ python3 cli.py test_all                # run every self-test
 
 ## COMMANDS
 
-    each `eg_<app>` in cli.py is a command; `eg_test_<app>` is a test.
-      tree      grow + show a regression tree
-      cluster   k-means++ / recursive halving
-      classify  incremental naive bayes (confusion matrix)
-      search    sa | ls | de optimizers (energy trace)
-      acquire   active learning; top rows by distance-to-heaven
-      textmine  CNB text mining (needs ../textz)
-      stats     same / bestRanks / confused demo
-      test_all  run every self-test (no pytest needed)
+    each `test_<name>` in cli.py is one command (demo + self-check),
+    run via `--<name>`. No FILE -> default dataset; FILE -> that CSV.
+      --core       primitives: Num/Sym/Data/distance/format
+      --tree       grow + show a regression tree, check plans
+      --cluster    k-means++ / k-means / recursive halving
+      --classify   naive bayes beats ZeroR        (needs ../klassif)
+      --search     sa | ls | de optimizers (energy trace)
+      --acquire    active learning beats random (20 reps)
+      --acquire20  hold-out tree win (acquire half, sort the other)
+      --textmine   CNB + tf-idf text mining        (needs ../textz)
+      --stats      same / bestRanks / confused
+    lanes: --fast (skip slow) | --slow (textmine) | --all
 
 ## OPTIONS
 
@@ -89,7 +92,8 @@ python3 cli.py test_all                # run every self-test
     ezr.py   library; section banners per app (Types, Col, Data,
              Distance, Bayes, Tree, Cluster, Classify, Search,
              Acquire, Textmine, Stats, Format)
-    cli.py   dispatch; eg_<app> demos + eg_test_<app> tests
+    cli.py   dispatch; one test_<name> per concept (demo + assert),
+             run via --<name>; --fast/--slow/--all lanes
 
 ## LICENSE
 
