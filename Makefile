@@ -29,3 +29,17 @@ win: ## hold-out win across every $(DATA)/*.csv (parallel): sorted list + mean
 	 xargs -P $(JOBS) -I{} sh -c 'python3 -B cli.py --acquire20 "{}" 2>/dev/null' \
 	 | gawk '{print $$1}' | sort -n | tee /tmp/ezr_win.txt | fmt
 	@gawk '{n++;s+=$$1} END{if(n) printf "\nmean=%.1f n=%d\n", s/n, n}' /tmp/ezr_win.txt
+
+ACQLOG := $(HOME)/tmp/konfig/ezr2_acquires.log
+$(ACQLOG): ## acquires over every $(DATA)/*.csv (12 cores), tee to log
+	@mkdir -p $(@D)
+	@ls $(DATA)/*.csv | shuf | \
+	 xargs -P 12 -I{} python3 -B -u ezr2.py acquires --file={} 2>/dev/null \
+	 | tee $@
+
+TACQLOG := $(HOME)/tmp/konfig/ezr2_tacquires.log
+$(TACQLOG): ## tacquires over every $(DATA)/*.csv (12 cores), tee to log
+	@mkdir -p $(@D)
+	@ls $(DATA)/*.csv | shuf | \
+	 xargs -P 12 -I{} python3 -B -u ezr2.py tacquires --file={} 2>/dev/null \
+	 | tee $@
