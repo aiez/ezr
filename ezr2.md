@@ -113,14 +113,14 @@ x-space, spend labels sparingly in y-space.
     [12]> round(distx(d, d.rows[0], best), 3)
     0.785
 
-## Active learning: acquire
+## Active learning: landscape
 
 `project` maps rows onto an east-west line through two distant
-labelled poles (the y-better one is east). `acquire` then
+labelled poles (the y-better one is east). `landscape` then
 labels `grow` rows per round, keeps the promising fraction,
 and repeats until the budget (`budget-check`) is spent.
 
-    def acquire(data):
+    def landscape(data):
       x   = lambda a,b: distx(data, a, b)
       y   = lambda r: disty(data, r)
       cap = the.budget - the.check
@@ -140,14 +140,14 @@ and repeats until the budget (`budget-check`) is spent.
 unhashable); its length *is* the budget. `wins` grades a row:
 % of the gap from median to best that it closes.
 
-    [13]> got = acquire(d)
+    [13]> got = landscape(d)
           len(got), round(disty(d,got[0]),3)
-    (42, 0.096)
+    (44, 0.087)
     [14]> round(wins(d)(got[0]), 1)
-    95.4
+    97.3
 
-42 labels land within 4% of the best disty in the data —
-~95% of the median-to-best gap closed.
+44 labels land within ~1% of the best disty in the data —
+~97% of the median-to-best gap closed.
 
 ## Trees: cuts, tree, show
 
@@ -190,42 +190,41 @@ selector can't — a `?`-heavy column emptying a side.
 means, then the branch tests. `+`/`-` flag the best/worst
 leaf; subtrees sort best-first.
 
-    [15]> t = tree(d, acquire(d)); show(d, t)
+    [15]> t = tree(d, landscape(d)); show(d, t)
       win     n    Lbs-   Acc+   Mpg+
-        2    44  2515.4   16.5   28.2
-       41    21  2017.8   16.9   31.9  Volume <= 108
-    +  69     7  1920.4   17.8   32.9  |  Volume <= 85
-       27    14  2066.4   16.4   31.4  |  Volume > 85
+        9    41  2386.0   16.4   28.5
+       39    26  2083.0   16.4   33.1  Volume <= 116
        ...
-      -33    23  2969.7   16.1   24.8  Volume > 108
+    +  78     3  2032.3   17.7   43.3  | ... | Volume <= 89
        ...
-    - -89     3  3487.3   14.6   16.7  |  |  Volume > 225
+      -43    15  2911.0   16.4   20.7  Volume > 116
+    - -66     4  3368.5   16.1   20.0  |  Volume > 200
 
-Low Volume + light cars sit at the good (`+`) leaf, Mpg 32.9;
-the heavy `-` leaf bottoms out at Mpg 16.7.
+Low Volume + light cars sit at the good (`+`) leaf, Mpg 43.3;
+the heavy `-` leaf bottoms out at Mpg 20.0.
 
-## The budget rig: tacquire
+## The budget rig: holdout
 
-`acquire` searches all the data. `tacquire` is the honest
-generalization test: split 50:50, **acquire on the train
+`landscape` searches all the data. `holdout` is the honest
+generalization test: split 50:50, **landscape on the train
 half only**, build a tree on those ~45 rows, then use it to
 rank the unseen test half and label the top `check`.
 
-    def tacquire(data):
+    def holdout(data):
       rows  = shuffle(data.rows)
       mid   = len(rows)//2
       train, test = rows[:mid], rows[mid:]
-      got   = acquire(clone(data, train))
+      got   = landscape(clone(data, train))
       t     = tree(data, got)
       top   = sorted(test,
                      key=lambda r: leaf(data,t,r))[:the.check]
       return min(top, key=lambda r: disty(data,r))
 
 `clone(data, rows)` is a fresh `Data` over the train subset,
-so `acquire`'s pool is the train half. The total label cost
+so `landscape`'s pool is the train half. The total label cost
 is one budget — no peeking at test.
 
-    [16]> best = tacquire(Data(csv(the.file)))
+    [16]> best = holdout(Data(csv(the.file)))
           round(disty(d2,best),3), round(wins(d2)(best),1)
     (0.105, 93.3)
 
@@ -247,7 +246,7 @@ duplicate defaults to drift.
 `main` applies `--key=val` overrides, then runs any named
 `test_*`. Tests are bare names on the command line:
 
-    $ python3 ezr2.py acquires --budget=80
+    $ python3 ezr2.py landscapes --budget=80
     $ python3 ezr2.py tree
     $ pytest ezr2.py
 

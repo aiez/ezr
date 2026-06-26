@@ -30,16 +30,18 @@ win: ## hold-out win across every $(DATA)/*.csv (parallel): sorted list + mean
 	 | gawk '{print $$1}' | sort -n | tee /tmp/ezr_win.txt | fmt
 	@gawk '{n++;s+=$$1} END{if(n) printf "\nmean=%.1f n=%d\n", s/n, n}' /tmp/ezr_win.txt
 
-ACQLOG := $(HOME)/tmp/konfig/ezr2_acquires.log
-$(ACQLOG): ## acquires over every $(DATA)/*.csv (12 cores), tee to log
+HOLD := $(HOME)/tmp/konfig/ezr2_holdouts.log
+$(HOLD): ## holdouts landscape-vs-random over all $(DATA), percentiles
 	@mkdir -p $(@D)
 	@ls $(DATA)/*.csv | shuf | \
-	 xargs -P 12 -I{} python3 -B -u ezr2.py acquires --file={} 2>/dev/null \
+	 xargs -P 12 -I{} python3 -B -u ezr2.py holdouts --file={} 2>/dev/null \
 	 | tee $@
+	@python3 -B pctl.py < $@
 
-TACQLOG := $(HOME)/tmp/konfig/ezr2_tacquires.log
-$(TACQLOG): ## tacquires over every $(DATA)/*.csv (12 cores), tee to log
+PURE := $(HOME)/tmp/konfig/ezr2_pure.log
+$(PURE): ## pure search land-vs-random (no tree) over all $(DATA)
 	@mkdir -p $(@D)
 	@ls $(DATA)/*.csv | shuf | \
-	 xargs -P 12 -I{} python3 -B -u ezr2.py tacquires --file={} 2>/dev/null \
+	 xargs -P 12 -I{} python3 -B -u ezr2.py pure --file={} 2>/dev/null \
 	 | tee $@
+	@python3 -B pctl.py < $@

@@ -1,32 +1,37 @@
 #!/usr/bin/env python3 -B
 """
-ezr2: active learning, rules, trees over CSV data.
+ezr2: landscape analysis for xai and optimization CSV data.
 (c) 2026, Tim Menzies <timm@ieee.org>, MIT license
 
 USAGE: python3 ezr2.py [--key=val ...] [test ...]
 
 OPTIONS: (defaults below are parsed into `the`):
-  --file   data file            = ../optimiz/misc_auto93.csv
-  --seed   random seed          = 1
-  --leaf   tree min leaf rows   = 3
-  --maxd   tree max depth       = 8
-  --grow   acquire labels/round = 4
-  --budget acquire label cap    = 50
-  --cap    max rows kept        = 1024
+  --file   data file             = ../optimiz/misc_auto93.csv
+  --seed   random seed           = 1
+  --leaf   tree min leaf rows    = 3
+  --maxd   tree max depth        = 8
+  --grow   add labels/round      = 4
+  --budget labeling cap          = 50
+  --cap    max rows kept         = 1024
   --check  rows labelled by tree = 5
-  --keepf  acquire keep frac    = 0.66
+  --keepf  keep frac             = 0.66
+  --landscape  active | random   = active
   -h       print this help
 
 TESTS: (run with their bare name):
-  acquire   20 shuffles; best disty per run
-  acquires  one mean-win line (the sweep)
+  disty       rows by disty: top 5 / bottom 5
+  landscape   20 shuffles; best disty per run
+  landscapes  one mean-win line (the sweep)
   tree      build+show a tree on acquired rows
-  tacquire  50:50 split; tree picks best test row
-  tacquires tacquire x20; mean win/disty line
+  holdout  50:50 split; tree picks best test row
+  holdouts holdout x20; land vs random verdict
+  pure     no tree: best labelled, land vs random
+  same     demo+validate the same() stat test
 """
 import re, sys, random
 from math import log2, exp
-from types import SimpleNamespace as o   # o(a=1).a == 1
+from bisect import bisect_left, bisect_right
+from types import SimpleNamespace as o
 isa = isinstance
 BIG = 1e32
 TINY = 1e-32
@@ -69,7 +74,7 @@ def Data(src):
            klass=None, protect=[], rows=[])
   return adds(src, roles(data))
 
-def clone(data, rows):
+def clone(data, rows):
   "Fresh Data over a subset of rows."
   return Data([data.names] + rows)
 
@@ -78,12 +83,12 @@ def roles(data):
   for at, s in enumerate(data.names):
     data.cols[at] = Num() if s[0].isupper() else Sym()
     if s[-1] == "X": continue
-    if s[-1] in "+-!":             # goal: +max -min !klass
+    if s[-1] in "+-!":
       data.y += [at]; data.goal[at] = s[-1] == "+"
       if s[-1] == "!": data.klass = at
     else:
-      data.x += [at]                    # predictor...
-      if s[-1] == "~": data.protect += [at]   # ...also sensitive
+      data.x += [at]
+      if s[-1] == "~": data.protect += [at]
   return data
 
 def adds(src, i=None):
@@ -126,11 +131,11 @@ def gap(col, u, v):
   if v == "?": v = 1 if u < .5 else 0
   return abs(u - v)
 
-def labelled(row): return row   # HOOK: fill row's y-values here
+def labelled(row): return row
 
 def disty(data, row, **kw):
   "Row's distance to the best goals (0 = ideal)."
-  row = labelled(row)           # pay the (external) label here
+  row = labelled(row)
   return minkowski(
     (abs(norm(data.cols[at], row[at]) - data.goal[at])
      for at in data.y if row[at] != "?"), **kw)
@@ -147,7 +152,7 @@ def wins(data):
   return lambda r: max(-100, min(100,
     100 * (1 - (disty(data,r)-lo) / (b4-lo+TINY))))
 
-#-- Landscape ---------------------------------------------------
+#-- Landscape ---------------------------------------------------
 def project(rows, x, y):
   "Row -> position on the east-west line (x=dist,y=goal)."
   far  = lambda r: max(rows, key=lambda z: x(z, r))
@@ -156,19 +161,21 @@ def project(rows, x, y):
   c = x(east, west) + TINY
   return lambda r: (x(east,r)**2 + c*c - x(west,r)**2)/(2*c)
 
-def acquire(data):
-  "Active-learn; label <= budget-check, best rows first."
-  x   = lambda r1, r2: distx(data, r1, r2)   # x-space dist
-  y   = lambda r: disty(data, r)             # the paid label
-  cap = the.budget - the.check    # reserve check for exploit
+def landscape(data):
+  "Label <=budget-check rows, best first. --landscape picks how."
+  y   = lambda r: disty(data, r)
+  cap = the.budget - the.check
+  if the.landscape == "random":
+    return sorted(some(data.rows, cap), key=y)
+  x   = lambda r1, r2: distx(data, r1, r2)
   pool = shuffle(data.rows)
-  lab  = {}                       # id(row)->row; budget=len(lab)
+  lab  = {}
   while len(lab) < cap and len(pool) >= 2*the.leaf:
     here, k = [], 0
     for r in pool:
-      if id(r) in lab: here.append(r)          # already labelled
+      if id(r) in lab: here.append(r)
       elif k < the.grow and len(lab) < cap:
-        lab[id(r)] = r; here.append(r); k += 1  # spend a label
+        lab[id(r)] = r; here.append(r); k += 1
     n = max(1, int((1-the.keepf)*len(pool)))
     pool = sorted(pool, key=project(here, x, y))[n:]
   return sorted(lab.values(), key=y)
@@ -195,7 +202,7 @@ def cuts(data,rows,at,Y):
     for j,(x,y) in enumerate(xy):
       l = add(l, y)
       if j+1 < n and x != xy[j+1][0] and big(j+1):
-        yield cut(l, x)           # cut at a value boundary
+        yield cut(l, x)
 
 def has(row, col, at, v):
   "Does row fall on the yes-side of a cut? (? = yes)."
@@ -210,17 +217,17 @@ def tree(data, rows, Y=None, lvl=0):
   if len(rows) >= 2*the.leaf and lvl < the.maxd:
     if cut := min((c for at in data.x
                    for c in cuts(data,rows,at,Y)), default=0):
-      _, at, v = cut              # cuts() ensured leaf sizes
+      _, at, v = cut
       col = data.cols[at]
       yes, no = [], []
       for r in rows: (yes if has(r,col,at,v) else no).append(r)
-      if yes and no:              # ? rows can empty a side
+      if yes and no:
         t.at, t.v = at, v
         t.yes = tree(data, yes, Y, lvl+1)
         t.no  = tree(data, no,  Y, lvl+1)
   return t
 
-def leaf(data, t, row):
+def leaf(data, t, row):
   "Walk a row down to its leaf; return the leaf's mu."
   while t.at is not None:
     t = t.yes if has(row,data.cols[t.at],t.at,t.v) else t.no
@@ -236,7 +243,7 @@ def show(data, t):
   "Pretty-print a tree: win, n, goal means, then branches."
   y  = lambda r: disty(data, r)
   vs = sorted(y(r) for r in t.rows)
-  blo, bmd = vs[0], vs[len(vs)//2]          # baseline lo, mid
+  blo, bmd = vs[0], vs[len(vs)//2]
   win= lambda rows: int(100*(1 - (
         sum(y(r) for r in rows)/len(rows) - blo)/(bmd-blo+TINY)))
   ws = [win(x.rows) for x in leaves(t)]
@@ -255,7 +262,7 @@ def show(data, t):
     print(("%s%4d %5d  %s  %s%s"
            % (m, w, t.n, mu, pad, edge)).rstrip())
     if t.at is not None:
-      p2 = pad + ("|  " if edge else "")   # root adds no bar
+      p2 = pad + ("|  " if edge else "")
       kids = [(t.yes, cond(t,True)), (t.no, cond(t,False))]
       for kid,e in sorted(kids, key=lambda ke: ke[0].mu):
         go(kid, p2, e)
@@ -265,13 +272,40 @@ def show(data, t):
 def shuffle(lst): return random.sample(lst, len(lst))
 def some(lst, k): return random.sample(lst, min(k, len(lst)))
 
+def cliffs(xs, ys):
+  "Cliff's delta effect size in 0..1 (0 = identical)."
+  ys = sorted(ys); m = len(ys)
+  gt = sum(bisect_left(ys, x)      for x in xs)
+  lt = sum(m - bisect_right(ys, x) for x in xs)
+  return abs(gt - lt) / (len(xs) * m + 1e-32)
+
+def ks(xs, ys):
+  "Kolmogorov-Smirnov: max gap between the two CDFs."
+  xs, ys = sorted(xs), sorted(ys); n, m = len(xs), len(ys)
+  gap = lambda v: abs(bisect_right(xs,v)/n
+                      - bisect_right(ys,v)/m)
+  return max(map(gap, xs + ys))
+
+def cohen(xs, ys, eps=0.35):
+  "Small effect: |mean gap| < eps * pooled stdev."
+  x, y = adds(xs), adds(ys); n, m = n_(x), n_(y)
+  pooled = (((n-1)*sd(x)**2 + (m-1)*sd(y)**2)/(n+m-2))**.5
+  return abs(mu_(x) - mu_(y)) <= eps * (pooled + TINY)
+
+def same(xs, ys, cliff=0.195, conf=1.36):
+  "True if xs,ys are statistically indistinguishable."
+  if not cohen(xs, ys): return False
+  if cliffs(xs, ys) > cliff: return False
+  n, m = len(xs), len(ys)
+  return ks(xs, ys) <= conf * ((n + m) / (n * m)) ** 0.5
+
 def thing(s):
   "Coerce a string to int/float/bool, else leave as str."
   if (s[1:] if s[:1]=="-" else s).isdigit(): return int(s)
   try: return float(s)
   except ValueError: return s=="True" or (s!="False" and s)
 
-def settings(doc):
+def settings(doc):
   "Parse '--key ... = val' lines of doc into an o()."
   pat = r"--(\w+)\s+[^=\n]*=\s*(\S+)"
   return o(**{k: thing(v) for k,v in re.findall(pat, doc)})
@@ -284,7 +318,23 @@ def csv(file, clean=lambda s: s.partition("#")[0].split(",")):
       if any(row): yield [thing(x) for x in row]
 
 #-- Tests (test_*) ----------------------------------------------
-def test_acquire():
+def test_disty():
+  "Rows sorted by disty: header, top 5, blank, bottom 5."
+  data = Data(csv(the.file))
+  rows = sorted(data.rows, key=lambda r: disty(data, r))
+  hdr  = list(data.names) + ["disty"]
+  fmt  = lambda r: [str(v) for v in r]+["%.3f" % disty(data,r)]
+  body = [fmt(r) for r in rows[:5] + rows[-5:]]
+  w = [max(len(row[c]) for row in [hdr]+body)
+       for c in range(len(hdr))]
+  line = lambda cs: print("  ".join(c.rjust(w[i])
+                                    for i,c in enumerate(cs)))
+  line(hdr)
+  for r in body[:5]: line(r)
+  print()
+  for r in body[5:]: line(r)
+
+def test_landscape():
   "20 shuffles; table of best disty/win found, by rank."
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
@@ -292,14 +342,14 @@ def test_acquire():
   for i in range(20):
     random.seed(the.seed + i)
     data.rows = shuffle(data.rows)
-    got = acquire(data)
+    got = landscape(data)
     bests += [(disty(data,got[0]), W(got[0]), len(got))]
   print("rank  disty    win   n  (%s)" % the.file.split("/")[-1])
   for r,(b,w,n) in enumerate(sorted(bests)):
     print("%4d %7.3f %6.1f %3d" % (r, b, w, n))
   assert sum(b for b,_,_ in bests)/len(bests) < 0.3
 
-def test_acquires():
+def test_landscapes():
   "One summary line: mean win/disty over 20 runs."
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
@@ -307,47 +357,88 @@ def test_acquires():
   for i in range(20):
     random.seed(the.seed + i)
     data.rows = shuffle(data.rows)
-    got = acquire(data)
+    got = landscape(data)
     ds += [disty(data,got[0])]; ws += [W(got[0])]; n = len(got)
   print("%6.1f %7.3f %4d  %s" % (sum(ws)/len(ws),
         sum(ds)/len(ds), n, the.file.split("/")[-1]))
 
 def test_tree():
-  "Build a tree over acquire's rows and print it."
+  "Build a tree over landscape's rows and print it."
   random.seed(the.seed)
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
-  show(data, tree(data, acquire(data)))
+  show(data, tree(data, landscape(data)))
 
-def tacquire(data):
-  "Budget rig: acquire on train -> tree -> pick from test."
+def test_trees():
+  "Same budget: random-trained vs landscape-trained tree."
+  random.seed(the.seed)
+  data = Data(csv(the.file))
+  data.rows = some(data.rows, the.cap)
+  land = landscape(data)
+  rand = some(data.rows, len(land))
+  W = wins(data)
+  for tag, rows in [("random", rand), ("landscape", land)]:
+    best = min(rows, key=lambda r: disty(data,r))
+    print("\n== %s  n=%d  best disty=%.3f  win=%.1f ==" %
+          (tag, len(rows), disty(data,best), W(best)))
+    show(data, tree(data, rows))
+
+def holdout(data):
+  "Budget rig: landscape train -> tree -> pick from test."
   rows  = shuffle(data.rows)
   mid   = len(rows)//2
-  train, test = rows[:mid], rows[mid:]      # 50:50 split
-  got   = acquire(clone(data, train))       # active-learn
-  t     = tree(data, got)                   # tree on those
+  train, test = rows[:mid], rows[mid:]
+  got   = landscape(clone(data, train))
+  t     = tree(data, got)
   top   = sorted(test, key=lambda r: leaf(data,t,r))[:the.check]
   return min(top, key=lambda r: disty(data,r))
 
-def test_tacquire():
-  "One run: print the picked best row's disty and win."
+def vs(data, pick):
+  "active vs random over 20 runs of pick(); stat verdict line."
+  W, out = wins(data), {}
+  for mode in ("active", "random"):
+    the.landscape = mode; out[mode] = []
+    for i in range(20):
+      random.seed(the.seed + i); out[mode] += [W(pick(data))]
+  the.landscape = "active"
+  L, R = out["active"], out["random"]
+  ml, mr = sum(L)/20, sum(R)/20
+  v = "tie" if same(L, R) else ("land" if ml > mr else "rand")
+  print("%6.1f %6.1f %-5s %s" % (ml, mr, v,
+        the.file.split("/")[-1]))
+
+def test_holdout():
+  "One run: the holdout-picked best row's disty and win."
   random.seed(the.seed)
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
-  best = tacquire(data)
-  print("best disty %.3f  win %.1f  (%s)" % (disty(data,best),
-        wins(data)(best), the.file.split("/")[-1]))
+  b = holdout(data)
+  print("best disty %.3f  win %.1f  (%s)" % (disty(data,b),
+        wins(data)(b), the.file.split("/")[-1]))
 
-def test_tacquires():
-  "One summary line: mean win/disty over 20 runs."
+def test_holdouts():
+  "active vs random landscape, through the holdout pipeline."
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
-  W, ds, ws = wins(data), [], []
-  for i in range(20):
-    random.seed(the.seed + i)
-    ds += [disty(data, b := tacquire(data))]; ws += [W(b)]
-  print("%6.1f %7.3f  %s" % (sum(ws)/20, sum(ds)/20,
-        the.file.split("/")[-1]))
+  vs(data, holdout)
+
+def test_pure():
+  "active vs random landscape; best labelled row, no tree."
+  data = Data(csv(the.file))
+  data.rows = some(data.rows, the.cap)
+  vs(data, lambda d: landscape(d)[0])
+
+def test_same():
+  "Validate same(): small shift = same, big shift = differ."
+  random.seed(the.seed)
+  a = [random.gauss(0, 1) for _ in range(20)]
+  shift = lambda d: [x + d for x in a]
+  print("shift  same   cliffs cohen")
+  for d in (0, 0.1, 0.3, 0.5, 1.0, 2.0):
+    b = shift(d)
+    print(" %+.1f  %-5s  %.2f   %s" % (d, same(a,b),
+          cliffs(a,b), cohen(a,b)))
+  assert same(a, a) and not same(a, shift(2))
 
 #-- Main --------------------------------------------------------
 def main(funs):
@@ -359,7 +450,7 @@ def main(funs):
       if k in vars(the): setattr(the, k, thing(v))
   for a in sys.argv[1:]:
     if (n := "test_"+a) in funs:
-      random.seed(the.seed); funs[n]()   # reseed per test
+      random.seed(the.seed); funs[n]()
 
 the = settings(__doc__)
 if __name__ == "__main__": main(globals())
