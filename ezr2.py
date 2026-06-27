@@ -15,6 +15,7 @@ OPTIONS: (defaults below are parsed into `the`):
   --cap    max rows kept         = 1024
   --check  rows labelled by tree = 5
   --keepf  keep frac             = 0.66
+  --round  decimals shown        = 3
   --landscape  active | random   = active
   -h       print this help
 
@@ -27,6 +28,44 @@ TESTS: (run with their bare name):
   holdouts holdout x20; land vs random verdict
   pure     no tree: best labelled, land vs random
   same     demo+validate the same() stat test
+  all      run every test above, reseting seed each
+"""
+"""
+INSTALL: grab this script and some sample data, then run a test:
+  wget -O ezr2.py     http://tiny.cc/ezr#file-ezr2-py
+  wget -O auto93.csv  http://tiny.cc/optimiz#file-misc_auto93-csv
+  python3 ezr2.py --file=auto93.csv disty
+
+MODES: optimize a static CSV (format below), or a live model by
+  overriding labelled() to compute goals on demand -- worked example
+  in dtlz4.py (http://tiny.cc/ezr#file-dtlz4-py).
+
+DATA: comma-separated, first row names the columns. A name's last
+character sets that column's role; its first sets its type:
+  Upper case first letter  -> numeric  (else: symbolic)
+  +  /  -   suffix         -> goal: maximize / minimize  (a y-column)
+  !         suffix         -> klass   (a y-column)
+  X         suffix         -> ignore this column
+  ~         suffix         -> protected x-column
+  (no suffix)              -> ordinary x-column (input)
+E.g. the auto93 header Clndrs,Volume,HpX,Model,origin,Lbs-,Acc+,Mpg+
+has numeric inputs (Clndrs/Volume/Model), a symbolic input (origin),
+an ignored column (HpX), and goals minimize Lbs, maximize Acc/Mpg.
+
+DISTY: every row's "distance to heaven" -- its distance to the ideal
+point where all goals are best (0 = ideal, 1 = worst). `disty` reads
+only the y-columns, so optimization can score a row without seeing
+how it was made. `python3 ezr2.py disty` sorts rows by disty and
+prints the best 5, a blank line, then the worst 5:
+
+  Clndrs  Volume  HpX  Model  origin  Lbs-  Acc+  Mpg+  disty
+       4      90   48     78       2  1985  21.5    40  0.075
+       ...                                              ...
+       8     455  225     70       1  4425    10    10  0.954
+
+Best rows (disty~0) are light, high-Mpg cars; worst (disty~1) are
+heavy guzzlers. Optimizers seek low-disty rows while labelling
+(inspecting the y of) as few rows as possible.
 """
 import re, sys, random
 from math import log2, exp
@@ -49,6 +88,8 @@ def welford(v, n, mu, m2):
   n += 1; d  = v - mu; mu += d / n
   return (n, mu, m2 + d * (v - mu))
 
+def sd(num): n,mu,m2 = num; return 0 if n<2 else (max(0,m2)/(n-1))**.5
+
 def entropy(d):
   "Shannon entropy of a Sym (a dict of counts)."
   N = sum(d.values()) or 1
@@ -64,9 +105,9 @@ def mix(i, j, inc=1):
   d  = muj - mui
   mu = (ni * mui + inc * nj * muj) / n
   m2 = m2i + inc * m2j + inc * d * d * ni * nj / n
-  return Num(n, mu, m2)
+  return Num(n, mu, max(0, m2))      # subtraction can underflow m2 below 0
 
-#-- Data --------------------------------------------------------
+#-- Data --------------------------------------------------------
 def Data(src):
   "Build a table; first row = column names."
   src  = iter(src)
@@ -74,7 +115,7 @@ def Data(src):
            klass=None, protect=[], rows=[])
   return adds(src, roles(data))
 
-def clone(data, rows):
+def clone(data, rows):
   "Fresh Data over a subset of rows."
   return Data([data.names] + rows)
 
@@ -93,7 +134,7 @@ def roles(data):
 
 def adds(src, i=None):
   "Fold a stream of values/rows into i (Num by default)."
-  i = i or Num()
+  i = Num() if i is None else i        # keep an empty Sym; {} is falsy
   for v in src: i = add(i,v)
   return i
 
@@ -108,7 +149,8 @@ def add(i,v):
   return i
 
 #-- Dist --------------------------------------------------------
-def sd(num): n,mu,m2 = num; return 0 if n<2 else (m2/(n-1))**.5
+def mid(i): return max(i,key=i.get) if isa(i,Sym) else mu_(i)
+def var(i): return entropy(i)       if isa(i,Sym) else sd(i)
 
 def norm(num, v):
   "Map v to 0..1 via a logistic on its z-score."
@@ -181,59 +223,64 @@ def landscape(data):
   return sorted(lab.values(), key=y)
 
 #-- Tree build --------------------------------------------------
-def impurity(col):
-  "Cut cost: a Num's m2, or a Sym's entropy*count."
-  if not isa(col, Sym): return m2_(col)
-  return entropy(col) * sum(col.values())
+def mid(col): return max(col,key=col.get) if isa(col,Sym) else mu_(col)
+def var(col): return entropy(col)          if isa(col,Sym) else sd(col)
 
-def cuts(data,rows,at,Y):
-  "Yield (cost,at,v) splits with both sides >= the.leaf."
+def size(col): return sum(col.values()) if isa(col,Sym) else n_(col)
+
+def score(here, there):
+  "Split cost (lower=better): size-weighted nean of var (sd|entropy)."
+  a, b = size(here), size(there)
+  return (var(here)*a + var(there)*b) / (a + b + 1e-32)
+
+def cuts(data,rows,at,Y,accum=Num):
+  "Yield (cost,at,v) splits with both sides >= the.leaf. accum=Num|Sym"
   xy  = [(r[at], Y(r)) for r in rows if r[at] != "?"]
   n   = len(xy)
-  tot = adds(y for _,y in xy)
-  cut = lambda l,k: (impurity(l) + impurity(mix(tot,l,-1)), at,k)
+  tot = adds((y for _,y in xy), accum())
+  cut = lambda here,k: (score(here, mix(tot,here,-1)), at,k)
   big = lambda lo: the.leaf <= lo <= n-the.leaf
   if isa(data.cols[at], Sym):
     for k in {x for x,_ in xy}:
       ys = [y for x,y in xy if x==k]
-      if big(len(ys)): yield cut(adds(ys), k)
+      if big(len(ys)): yield cut(adds(ys, accum()), k)
   else:
-    xy.sort(); l=Num()
+    xy.sort(); me=accum()
     for j,(x,y) in enumerate(xy):
-      l = add(l, y)
+      me = add(me, y)
       if j+1 < n and x != xy[j+1][0] and big(j+1):
-        yield cut(l, x)
+        yield cut(me, x)
 
 def has(row, col, at, v):
   "Does row fall on the yes-side of a cut? (? = yes)."
   w = row[at]
   return w == "?" or (v == w if isa(col, Sym) else w <= v)
 
-def tree(data, rows, Y=None, lvl=0):
-  "Recursively split rows on the min-impurity cut."
+def tree(data, rows, Y=None, accum=Num, lvl=0):
+  "Recursively split rows on the min-cost cut. accum=Num|Sym."
   Y = Y or (lambda r: disty(data, r))
-  t = o(at=None, mu=mu_(adds(Y(r) for r in rows)),
+  t = o(at=None, mid=mid(adds((Y(r) for r in rows), accum())),
         n=len(rows), rows=rows)
   if len(rows) >= 2*the.leaf and lvl < the.maxd:
     if cut := min((c for at in data.x
-                   for c in cuts(data,rows,at,Y)), default=0):
+                   for c in cuts(data,rows,at,Y,accum)), default=0):
       _, at, v = cut
       col = data.cols[at]
       yes, no = [], []
       for r in rows: (yes if has(r,col,at,v) else no).append(r)
       if yes and no:
         t.at, t.v = at, v
-        t.yes = tree(data, yes, Y, lvl+1)
-        t.no  = tree(data, no,  Y, lvl+1)
+        t.yes = tree(data, yes, Y, accum, lvl+1)
+        t.no  = tree(data, no,  Y, accum, lvl+1)
   return t
 
-def leaf(data, t, row):
-  "Walk a row down to its leaf; return the leaf's mu."
+def leaf(data, t, row):
+  "Walk a row down to its leaf; return the leaf's mid."
   while t.at is not None:
     t = t.yes if has(row,data.cols[t.at],t.at,t.v) else t.no
-  return t.mu
+  return t.mid
 
-#-- Tree show ---------------------------------------------------
+#-- Tree show ---------------------------------------------------
 def leaves(t):
   "Yield every leaf node of a tree."
   if t.at is None: yield t
@@ -248,23 +295,25 @@ def show(data, t):
         sum(y(r) for r in rows)/len(rows) - blo)/(bmd-blo+TINY)))
   ws = [win(x.rows) for x in leaves(t)]
   lo, hi = min(ws), max(ws)
+  rnd  = lambda v: round(v, the.round) if isa(v, float) else v
   cond = lambda t,b: "%s %s %s" % (data.names[t.at],
     ("==" if b else "!=") if isa(data.cols[t.at],Sym)
-    else ("<=" if b else ">"), t.v)
-  head = " ".join("%6s" % data.names[a] for a in data.y)
-  print(" %4s %5s  %s" % ("win", "n", head))
+    else ("<=" if b else ">"), rnd(t.v))
+  best, worst = chr(0x25B2), chr(0x25BC)        # up/down triangles
+  head = " ".join("%8s" % data.names[a] for a in data.y)
+  print("%s %4s %5s  %s" % (" ", "win", "n", head))
   def go(t, pad="", edge=""):
     w = win(t.rows)
     m = " "
-    if t.at is None: m = "+" if w==hi else "-" if w==lo else " "
-    mu = " ".join("%6.1f" % mu_(adds(r[a] for r in t.rows))
-                  for a in data.y)
-    print(("%s%4d %5d  %s  %s%s"
-           % (m, w, t.n, mu, pad, edge)).rstrip())
+    if t.at is None: m = best if w==hi else worst if w==lo else " "
+    mids = " ".join("%8.*f" % (the.round, mid(adds(r[a] for r in t.rows)))
+                    for a in data.y)
+    print(("%s %4d %5d  %s  %s%s"
+           % (m, w, t.n, mids, pad, edge)).rstrip())
     if t.at is not None:
       p2 = pad + ("|  " if edge else "")
       kids = [(t.yes, cond(t,True)), (t.no, cond(t,False))]
-      for kid,e in sorted(kids, key=lambda ke: ke[0].mu):
+      for kid,e in sorted(kids, key=lambda ke: ke[0].mid):
         go(kid, p2, e)
   go(t)
 
@@ -305,7 +354,7 @@ def thing(s):
   try: return float(s)
   except ValueError: return s=="True" or (s!="False" and s)
 
-def settings(doc):
+def settings(doc):
   "Parse '--key ... = val' lines of doc into an o()."
   pat = r"--(\w+)\s+[^=\n]*=\s*(\S+)"
   return o(**{k: thing(v) for k,v in re.findall(pat, doc)})
@@ -317,7 +366,7 @@ def csv(file, clean=lambda s: s.partition("#")[0].split(",")):
       row = [x.strip() for x in clean(line)]
       if any(row): yield [thing(x) for x in row]
 
-#-- Tests (test_*) ----------------------------------------------
+#-- Tests (test_*) ----------------------------------------------
 def test_disty():
   "Rows sorted by disty: header, top 5, blank, bottom 5."
   data = Data(csv(the.file))
@@ -335,19 +384,22 @@ def test_disty():
   for r in body[5:]: line(r)
 
 def test_landscape():
-  "20 shuffles; table of best disty/win found, by rank."
+  "20 shuffles; per run, best found by active landscape vs random pick."
   data = Data(csv(the.file))
   data.rows = some(data.rows, the.cap)
-  W, bests = wins(data), []
+  W, rows_out = wins(data), []
   for i in range(20):
-    random.seed(the.seed + i)
-    data.rows = shuffle(data.rows)
-    got = landscape(data)
-    bests += [(disty(data,got[0]), W(got[0]), len(got))]
-  print("rank  disty    win   n  (%s)" % the.file.split("/")[-1])
-  for r,(b,w,n) in enumerate(sorted(bests)):
-    print("%4d %7.3f %6.1f %3d" % (r, b, w, n))
-  assert sum(b for b,_,_ in bests)/len(bests) < 0.3
+    random.seed(the.seed + i); data.rows = shuffle(data.rows)
+    the.landscape = "active"; a = landscape(data)[0]
+    the.landscape = "random"; r = landscape(data)[0]
+    rows_out += [(disty(data,a), W(a), disty(data,r), W(r))]
+  the.landscape = "active"
+  up = chr(0x25B2)          # marks whichever side won (lower disty) this run
+  print("rank  aDisty  aWin   rDisty  rWin  win  (%s)" % the.file.split("/")[-1])
+  for k,(ad,aw,rd,rw) in enumerate(sorted(rows_out)):
+    win = "tie" if ad==rd else ("%s active" % up if ad<rd else "%s random" % up)
+    print("%4d %7.3f %5.1f  %7.3f %5.1f  %s" % (k, ad, aw, rd, rw, win))
+  assert sum(ad for ad,_,_,_ in rows_out)/len(rows_out) < 0.3
 
 def test_landscapes():
   "One summary line: mean win/disty over 20 runs."
@@ -439,6 +491,14 @@ def test_same():
     print(" %+.1f  %-5s  %.2f   %s" % (d, same(a,b),
           cliffs(a,b), cohen(a,b)))
   assert same(a, a) and not same(a, shift(2))
+
+def test_all():
+  "Run every other test_*, reseting the seed before each."
+  for n,f in list(globals().items()):
+    if n.startswith("test_") and n != "test_all":
+      print("\n#", n, "-"*40)
+      try: random.seed(the.seed); f()
+      except Exception as e: print("FAIL:", n, type(e).__name__, e)
 
 #-- Main --------------------------------------------------------
 def main(funs):

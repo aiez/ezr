@@ -5,6 +5,7 @@ APP    := ezr
 MAIN   := cli.py
 EXT    := py
 LANG   := python
+Font   := 4.7        # a touch smaller than konfig's 5, so ezr2.py still fits 6 cols
 SRC    := *.py
 LINT   := ruff check ezr.py cli.py
 TOOLS  := python3:run ruff:lint
@@ -33,7 +34,7 @@ win: ## hold-out win across every $(DATA)/*.csv (parallel): sorted list + mean
 HOLD := $(HOME)/tmp/konfig/ezr2_holdouts.log
 $(HOLD): ## holdouts landscape-vs-random over all $(DATA), percentiles
 	@mkdir -p $(@D)
-	@ls $(DATA)/*.csv | shuf | \
+	@ls $(DATA)/*.csv | (gshuf 2>/dev/null || sort -R) | \
 	 xargs -P 12 -I{} python3 -B -u ezr2.py holdouts --file={} 2>/dev/null \
 	 | tee $@
 	@python3 -B pctl.py < $@
@@ -41,7 +42,7 @@ $(HOLD): ## holdouts landscape-vs-random over all $(DATA), percentiles
 PURE := $(HOME)/tmp/konfig/ezr2_pure.log
 $(PURE): ## pure search land-vs-random (no tree) over all $(DATA)
 	@mkdir -p $(@D)
-	@ls $(DATA)/*.csv | shuf | \
+	@ls $(DATA)/*.csv | (gshuf 2>/dev/null || sort -R) | \
 	 xargs -P 12 -I{} python3 -B -u ezr2.py pure --file={} 2>/dev/null \
 	 | tee $@
 	@python3 -B pctl.py < $@
