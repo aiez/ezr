@@ -21,7 +21,7 @@ python3 cli.py --all                   # run every self-test
 
 **Sections:** [NAME](#name) | [SYNOPSIS](#synopsis) | [DESCRIPTION](#description) | [DATA](#data) | [COMMANDS](#commands) | [OPTIONS](#options) | [LAYOUT](#layout) | [LICENSE](#license) | [AUTHOR](#author)
 
-**Files:** [ezr.py](#file-ezr-py) | [cli.py](#file-cli-py) | [Makefile](#file-makefile) | [pyproject.toml](#file-pyproject-toml) | [LICENSE.md](#file-license-md)
+**Files:** [ezr.py](http://tiny.cc/ezr#file-ezr-py) | [cli.py](http://tiny.cc/ezr#file-cli-py) | [Makefile](http://tiny.cc/ezr#file-makefile) | [pyproject.toml](http://tiny.cc/ezr#file-pyproject-toml) | [LICENSE.md](http://tiny.cc/ezr#file-license-md)
 
 ## NAME
 
