@@ -19,4 +19,4 @@ ezr = "cli:main"
 py-modules = ["ezr", "cli"]
 
 [project.urls]
-Homepage = "http://tiny.cc/ezr"
+Homepage = "https://github.com/aiez/ezr"

@@ -4,5 +4,5 @@
 |  __// /| |   
  \___/___|_|   
                
-explainable multi-objective optimization. http://tiny.cc/ezr
+explainable multi-objective optimization. https://github.com/aiez/ezr
 "find the best rows; label the fewest."

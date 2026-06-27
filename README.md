@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2026 Tim Menzies, MIT License https://opensource.org/licenses/MIT -->
 <a href="https://timm.fyi"><img align="right" alt="Author" src="https://img.shields.io/badge/Author-timm-dc143c?logo=readme&logoColor=white"></a><img align="right" alt="Language" src="https://img.shields.io/badge/Language-Python%203.12+-000080?logo=python&logoColor=white"><img align="right" alt="Deps" src="https://img.shields.io/badge/Deps-0-32cd32?logo=checkmarx&logoColor=white"><a href="https://choosealicense.com/licenses/mit/"><img align="right" alt="License" src="https://img.shields.io/badge/License-MIT-32cd32?logo=open-source-initiative&logoColor=white"></a><img align="right" alt="Purpose" src="https://img.shields.io/badge/Purpose-XAI·Optimization-7b68ee?logo=githubcopilot&logoColor=white">
 
-### [http://tiny.cc/ezr](http://tiny.cc/ezr)
+### [https://github.com/aiez/ezr](https://github.com/aiez/ezr)
 ezr — explainable multi-objective optimization. Two files, ~1100 lines,
 **zero dependencies**, pure Python stdlib. An experiment in "how low can
 you go?": active learning labels a few dozen informative rows, builds a
@@ -11,9 +11,9 @@ orders of magnitude less cost.
 
 ```bash
 # sibling data gists supply the CSVs (no data lives in here)
-git clone http://tiny.cc/optimiz       # optimization data
-git clone http://tiny.cc/klassif       # classification data
-git clone http://tiny.cc/ezr && cd ezr
+git clone https://github.com/aiez/optimiz       # optimization data
+git clone https://github.com/aiez/klassif       # classification data
+git clone https://github.com/aiez/ezr && cd ezr
 python3 cli.py --list                  # all commands
 python3 cli.py --tree ../optimiz/auto93.csv
 python3 cli.py --all                   # run every self-test
@@ -21,7 +21,7 @@ python3 cli.py --all                   # run every self-test
 
 **Sections:** [NAME](#name) | [SYNOPSIS](#synopsis) | [DESCRIPTION](#description) | [DATA](#data) | [COMMANDS](#commands) | [OPTIONS](#options) | [LAYOUT](#layout) | [LICENSE](#license) | [AUTHOR](#author)
 
-**Files:** [ezr.py](http://tiny.cc/ezr#file-ezr-py) | [cli.py](http://tiny.cc/ezr#file-cli-py) | [Makefile](http://tiny.cc/ezr#file-makefile) | [pyproject.toml](http://tiny.cc/ezr#file-pyproject-toml) | [LICENSE.md](http://tiny.cc/ezr#file-license-md)
+**Files:** [ezr.py](https://github.com/aiez/ezr#file-ezr-py) | [cli.py](https://github.com/aiez/ezr#file-cli-py) | [Makefile](https://github.com/aiez/ezr#file-makefile) | [pyproject.toml](https://github.com/aiez/ezr#file-pyproject-toml) | [LICENSE.md](https://github.com/aiez/ezr#file-license-md)
 
 ## NAME
 
@@ -36,9 +36,9 @@ python3 cli.py --all                   # run every self-test
 
     Sibling gists (one parent dir; no naked paths):
       ezr/      this repo (ezr.py library + cli.py dispatch)
-      optimiz/  optimization CSVs   (tiny.cc/optimiz)
-      klassif/  classification CSVs (tiny.cc/klassif)
-      textz/    text-mining CSVs    (tiny.cc/textz)
+      optimiz/  optimization CSVs   (https://github.com/aiez/optimiz)
+      klassif/  classification CSVs (https://github.com/aiez/klassif)
+      textz/    text-mining CSVs    (https://github.com/aiez/textz)
       konfig/   shared Makefile + dotfiles (make help|sh|vi|...)
 
 ## DESCRIPTION
