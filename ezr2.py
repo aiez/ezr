@@ -83,10 +83,11 @@ def n_(num)  : return num[0]
 def mu_(num) : return num[1]
 def m2_(num) : return num[2]
 
-def welford(v, n, mu, m2):
-  "Fold value v into a Num; return new (n,mu,m2)."
-  n += 1; d  = v - mu; mu += d / n
-  return (n, mu, m2 + d * (v - mu))
+def welford(v, n, mu, m2, inc=1):
+  "Fold v into a Num (inc=-1 removes); return new (n,mu,m2)."
+  if (n := n + inc) <= 0: return Num()
+  d = v - mu; mu += inc * d / n
+  return (n, mu, m2 + inc * d * (v - mu))
 
 def sd(num): n,mu,m2 = num; return 0 if n<2 else (max(0,m2)/(n-1))**.5
 
@@ -138,14 +139,16 @@ def adds(src, i=None):
   for v in src: i = add(i,v)
   return i
 
-def add(i,v):
-  "Add one value to a col, or one row to a Data."
+def add(i,v,inc=1):
+  "Add one value/row to i (inc=-1 removes)."
   if isa(i,o):
-    for at,col in i.cols.items(): i.cols[at] = add(col,v[at])
-    i.rows += [v]
+    for at,col in i.cols.items(): i.cols[at] = add(col,v[at],inc)
+    (i.rows.append if inc==1 else i.rows.remove)(v)
   elif v != "?":
-    if isa(i,Sym): i[v] = i.get(v,0) + 1
-    else: i = welford(v, *i)
+    if isa(i,Sym):
+      if (c := i.get(v,0) + inc) > 0: i[v] = c
+      else: i.pop(v, None)             # dec to 0 drops the key
+    else: i = welford(v, *i, inc=inc)
   return i
 
 #-- Dist --------------------------------------------------------
