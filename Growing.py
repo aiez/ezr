@@ -23,7 +23,7 @@ the.landscape = "active"
 
 # 20 fast datasets (few columns, enough rows)
 files = []
-for f in sorted(glob.glob("../optimiz/*.csv")):
+for f in sorted(glob.glob(f"{ezr2.DOOT}/optimiz/*.csv")):  # PATHS: via DOOT
   with open(f) as fh: cols = len(fh.readline().split(","))
   if cols <= 16: files.append(f)
 files = files[:20]

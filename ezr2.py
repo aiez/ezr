@@ -67,7 +67,7 @@ Best rows (disty~0) are light, high-Mpg cars; worst (disty~1) are
 heavy guzzlers. Optimizers seek low-disty rows while labelling
 (inspecting the y of) as few rows as possible.
 """
-import re, sys, random
+import re, os, sys, random
 from math import log2, exp
 from bisect import bisect_left, bisect_right
 from types import SimpleNamespace as o
@@ -369,6 +369,15 @@ def csv(file, clean=lambda s: s.partition("#")[0].split(",")):
       row = [x.strip() for x in clean(line)]
       if any(row): yield [thing(x) for x in row]
 
+def find_up(name, then="."):
+  "Nearest ancestor of cwd holding a dir `name`; else `then`."
+  p = os.getcwd()
+  while True:
+    if os.path.isdir(os.path.join(p, name)): return p
+    if p == (p := os.path.dirname(p)): return then
+
+DOOT = os.environ.get("DOOT") or find_up("konfig", then="..")
+
 #-- Tests (test_*) ----------------------------------------------
 def test_disty():
   "Rows sorted by disty: header, top 5, blank, bottom 5."
@@ -516,4 +525,5 @@ def main(funs):
       random.seed(the.seed); funs[n]()
 
 the = settings(__doc__)
+the.file = re.sub(r"^\.\./", DOOT + "/", the.file)  # sibling default via DOOT
 if __name__ == "__main__": main(globals())
