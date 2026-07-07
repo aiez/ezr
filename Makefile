@@ -16,7 +16,8 @@ $(KONFIG)/Makefile:
 include $(KONFIG)/Makefile
 
 # ---- test lanes + benchmark (repo-specific; after the include) ----
-DATA ?= ../optimiz
+DOOT ?= $(abspath $(KONFIG)/..)
+DATA ?= $(DOOT)/optimiz
 JOBS ?= 24
 
 test:    ## quick tests (skips slow textmine)

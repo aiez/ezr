@@ -17,16 +17,25 @@ dataset; with a FILE arg it uses that CSV. Examples:
   ezr --learn.budget=256 --acquire20 ../optimiz/auto93.csv
   ezr --core
 """
-import sys, random, traceback
+import sys, os, random, traceback
 from pathlib import Path
 from ezr import *
 
-# ---- Default data files (sibling data gists; override via FILE arg) ----
-EGOPT1   = Path("../optimiz/auto93.csv")
-EGCLASS1 = Path("../klassif/soybean.csv")
-EGCLASS2 = Path("../klassif/diabetes.csv")
-EGCNB    = Path("../textz/Hall.csv")
-EGTXT    = Path("../textz/Hall_raw.csv")
+# ---- Default data files (sibling data gists; override via FILE arg).
+# PATHS: no naked sibling literals; route via $DOOT, else find_up.
+def find_up(name, then="."):
+  """Nearest ancestor of cwd holding a dir `name`; else `then`."""
+  p = Path.cwd()
+  for q in [p, *p.parents]:
+    if (q / name).is_dir(): return str(q)
+  return then
+
+DOOT     = os.environ.get("DOOT") or find_up("konfig", then="..")
+EGOPT1   = Path(f"{DOOT}/optimiz/auto93.csv")
+EGCLASS1 = Path(f"{DOOT}/klassif/soybean.csv")
+EGCLASS2 = Path(f"{DOOT}/klassif/diabetes.csv")
+EGCNB    = Path(f"{DOOT}/textz/Hall.csv")
+EGTXT    = Path(f"{DOOT}/textz/Hall_raw.csv")
 
 SLOW = {"textmine"}   # commands too slow for the --fast lane
 
